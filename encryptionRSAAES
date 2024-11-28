@@ -1,0 +1,159 @@
+using System;
+using System.IO;
+using System.Security.Cryptography;
+using System.Text;
+
+namespace ChatEncryption
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            Console.WriteLine("Initializing Encryption System...");
+            
+            // Generate AES Key and IV
+            using (Aes aes = Aes.Create())
+            {
+                byte[] aesKey = aes.Key; // AES-256 Key (32 bytes)
+                byte[] aesIV = aes.IV;  // Initialization Vector (16 bytes)
+
+                // Create RSA instance
+                RSAEncryption rsa = new RSAEncryption();
+
+                Console.WriteLine("Encryption System Ready!\n");
+
+                while (true)
+                {
+                    Console.WriteLine("Choose an option:");
+                    Console.WriteLine("1. Send a message");
+                    Console.WriteLine("2. Exit");
+                    Console.Write("Your choice: ");
+                    string choice = Console.ReadLine();
+
+                    if (choice == "1")
+                    {
+                        // Sender: Input the message
+                        Console.Write("\nSender: Enter your message: ");
+                        string originalMessage = Console.ReadLine();
+
+                        // Encrypt the message using AES
+                        string encryptedMessage = AES.Encrypt(originalMessage, aesKey, aesIV);
+
+                        // Encrypt the AES key using RSA
+                        byte[] encryptedAesKey = rsa.EncryptKey(aesKey);
+
+                        Console.WriteLine("\n--- Encrypted Data ---");
+                        Console.WriteLine("Encrypted Message (using AES): " + encryptedMessage);
+                        Console.WriteLine("Encrypted AES Key (using RSA): " + Convert.ToBase64String(encryptedAesKey));
+                        Console.WriteLine("This is the exact encrypted Aes Key: " + encryptedAesKey);
+                        Console.WriteLine("----------------------");
+
+                        // Receiver: Decrypt the AES key
+                        byte[] decryptedAesKey = rsa.DecryptKey(encryptedAesKey);
+
+                        // Decrypt the message using the decrypted AES key
+                        string decryptedMessage = AES.Decrypt(encryptedMessage, decryptedAesKey, aesIV);
+
+                        Console.WriteLine("\nReceiver: Decrypted Message: " + decryptedMessage);
+                        Console.WriteLine();
+                    }
+                    else if (choice == "2")
+                    {
+                        Console.WriteLine("Exiting...");
+                        break;
+                    }
+                    else
+                    {
+                        Console.WriteLine("Invalid choice. Please try again.\n");
+                    }
+                }
+            }
+        }
+    }
+
+    // AES Encryption/Decryption Class
+    public class AES
+    {
+        public static string Encrypt(string plainText, byte[] key, byte[] iv)
+        {
+            using (Aes aes = Aes.Create())
+            {
+                aes.Key = key;
+                aes.IV = iv;
+
+                using (var encryptor = aes.CreateEncryptor(aes.Key, aes.IV))
+                {
+                    using (var ms = new MemoryStream())
+                    {
+                        using (var cs = new CryptoStream(ms, encryptor, CryptoStreamMode.Write))
+                        {
+                            using (var writer = new StreamWriter(cs))
+                            {
+                                writer.Write(plainText);
+                            }
+                            return Convert.ToBase64String(ms.ToArray());
+                        }
+                    }
+                }
+            }
+        }
+
+        public static string Decrypt(string cipherText, byte[] key, byte[] iv)
+        {
+            using (Aes aes = Aes.Create())
+            {
+                aes.Key = key;
+                aes.IV = iv;
+
+                using (var decryptor = aes.CreateDecryptor(aes.Key, aes.IV))
+                {
+                    using (var ms = new MemoryStream(Convert.FromBase64String(cipherText)))
+                    {
+                        using (var cs = new CryptoStream(ms, decryptor, CryptoStreamMode.Read))
+                        {
+                            using (var reader = new StreamReader(cs))
+                            {
+                                return reader.ReadToEnd();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // RSA Encryption/Decryption Class
+    public class RSAEncryption
+    {
+        private RSAParameters publicKey;
+        private RSAParameters privateKey;
+
+        public RSAEncryption()
+        {
+            using (var rsa = new RSACryptoServiceProvider(2048))
+            {
+                rsa.PersistKeyInCsp = false; // Do not store the key in a persistent storage
+                publicKey = rsa.ExportParameters(false); // Export public key
+                privateKey = rsa.ExportParameters(true); // Export private key
+            }
+        }
+
+        public byte[] EncryptKey(byte[] key)
+        {
+            using (var rsa = new RSACryptoServiceProvider(2048))
+            {
+                rsa.ImportParameters(publicKey); // Use public key for encryption
+                return rsa.Encrypt(key, false); // Encrypt the AES key
+            }
+        }
+
+        public byte[] DecryptKey(byte[] encryptedKey)
+        {
+            using (var rsa = new RSACryptoServiceProvider(2048))
+            {
+                rsa.ImportParameters(privateKey); // Use private key for decryption
+                return rsa.Decrypt(encryptedKey, false); // Decrypt the AES key
+            }
+        }
+    }
+}
